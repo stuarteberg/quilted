@@ -1,16 +1,35 @@
 import os
 import json
+import shutil
 import tempfile
-import numpy as np
+import contextlib
+import functools
 from collections import OrderedDict
+
+import numpy as np
 import h5py
 
 from quilted.h5blockstore import H5BlockStore
 
+@contextlib.contextmanager
+def autocleaned_tmpdir():
+    tmpdir = tempfile.mkdtemp()
+    yield tmpdir
+    shutil.rmtree(tmpdir)
+
+def with_autocleaned_tempdir(f):
+    @functools.wraps(f)
+    def wrapped(*args):
+        with autocleaned_tmpdir() as tmpdir:
+            args += (tmpdir,)
+            return f(*args)
+    return wrapped
+
 class TestH5BlockStore(object):
 
-    def test_access(self):
-        blockstore_root_dir = tempfile.mkdtemp()
+    @with_autocleaned_tempdir
+    def test_access(self, tmpdir):
+        blockstore_root_dir = tmpdir
         blockstore = H5BlockStore(blockstore_root_dir, mode='a', axes='zyx', dtype=np.uint8)
         assert os.path.exists(blockstore.index_path)
         with open(blockstore.index_path, 'r') as index_file:
@@ -49,8 +68,9 @@ class TestH5BlockStore(object):
         block3 = blockstore.get_block_file( first_block_bounds, timeout=0.0 )
         del block3
         
-    def test_write(self):
-        blockstore_root_dir = tempfile.mkdtemp()
+    @with_autocleaned_tempdir
+    def test_write(self, tmpdir):
+        blockstore_root_dir = tmpdir
         blockstore = H5BlockStore(blockstore_root_dir, mode='a', axes='zyx', dtype=np.float32)
         first_block_bounds = ( (0,0,0), (100,200,300) )
         block = blockstore.get_block_file( first_block_bounds )
