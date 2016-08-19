@@ -59,21 +59,21 @@ class H5BlockStore(object):
         self.index_path = os.path.join(self.root_dir, 'index.json')
         self.index_lock = FileLock(self.index_path)
 
-        if mode == 'r' or (mode == 'a' and os.path.exists(self.index_path)):
+        if mode == 'r':
             if not os.path.exists(self.index_path):
                 raise H5BlockStore.StoreDoesNotExistError("Can't open in read mode; index file does not exist: {}".format(self.index_path))
             assert not dtype, "Can't set dtype; index is already initialized."
             assert not dset_options, "Can't specify dataset options; index is already initialized."
-        else:
+        elif not os.path.exists(self.index_path):
             assert axes is not None, "Must specify axes (e.g. axes='zyx')"
             assert dtype is not None, "Must specify dtype"
             self._create_index(self.root_dir, axes, dtype, dset_options)
 
         self._init()
         
-        assert self.axes == axes, \
+        assert not axes or self.axes == axes, \
             "Provided axes ({}) don't match previously stored axes ({})".format(axes, self.axes)
-        assert self.dtype == dtype, \
+        assert not dtype or self.dtype == dtype, \
             "Provided dtype ({}) doesn't match previously stored dtype ({})".format(dtype, self.dtype)
         
         
