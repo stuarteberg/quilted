@@ -116,8 +116,9 @@ class H5BlockStore(object):
         # TODO: Storing everything in one directory like this
         #       won't perform well for 1000s of blocks.
         #       This function could be made more sophisticated.
-        return "blocks/block-{}--{}.h5".format('-'.join(map(str, block_bounds[0])),
-                                               '-'.join(map(str, block_bounds[1])))
+        return "blocks/block_{}__{}.h5".format(
+            '_'.join(map(lambda (axis, bb): axis + str(bb), zip(self.axes, block_bounds[0]))),
+            '_'.join(map(lambda (axis, bb): axis + str(bb), zip(self.axes, block_bounds[1]))))
 
     def _load_index(self):
         assert self.index_lock.locked(), \
