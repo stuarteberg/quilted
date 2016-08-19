@@ -66,7 +66,13 @@ class H5BlockStore(object):
             self._create_index(self.root_dir, axes, dtype, dset_options)
 
         self._init()
-
+        
+        assert self.axes == axes, \
+            "Provided axes ({}) don't match previously stored axes ({})".format(axes, self.axes)
+        assert self.dtype == dtype, \
+            "Provided dtype ({}) doesn't match previously stored dtype ({})".format(dtype, self.dtype)
+        
+        
     def _create_index(self, root_dir, axes, dtype, dset_options):
         mkdir_p(root_dir)
         dset_options = dset_options or {}
