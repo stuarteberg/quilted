@@ -85,13 +85,10 @@ class H5BlockStore(object):
         if 'chunks' not in dset_options:
             dset_options['chunks'] = True
 
-        index_data = \
-        {
-            "axes": axes,
-            "dtype": str(np.dtype(dtype)),
-            "dset_options": dset_options,            
-            "block_entries": []
-        }
+        index_data = OrderedDict( [("axes", axes),
+                                   ("dtype", str(np.dtype(dtype))),
+                                   ("dset_options", dset_options),            
+                                   ("block_entries", [])] )
         
         with self.index_lock:
             self._write_index(index_data)
