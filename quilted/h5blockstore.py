@@ -45,8 +45,12 @@ class H5BlockStore(object):
     - Multiprocess-safe: Blocks are single-writer, multiple-reader.
       (Synchronized with a FileLock-based mechanism.)
     """
-    class TimeoutError(RuntimeError): pass
-    class MissingBlockError(RuntimeError): pass
+    class StoreDoesNotExistError(RuntimeError):
+        """Raised if you attempt to read a store that doesn't exist"""
+    class MissingBlockError(RuntimeError):
+        """Raised if you attempt to read a block that doesn't exist"""
+    class TimeoutError(RuntimeError):
+        """Raised if it takes too long to wait for access to a block that is being read/written by other threads/processes."""
     
     def __init__(self, root_dir, mode='r', axes=None, dtype=None, dset_options=None):
         assert mode in ('r', 'a'), "Invalid mode"
@@ -57,7 +61,7 @@ class H5BlockStore(object):
 
         if mode == 'r' or (mode == 'a' and os.path.exists(self.index_path)):
             if not os.path.exists(self.index_path):
-                raise RuntimeError("Can't open in read mode; index file does not exist: {}".format(self.index_path))
+                raise H5BlockStore.StoreDoesNotExistError("Can't open in read mode; index file does not exist: {}".format(self.index_path))
             assert not dtype, "Can't set dtype; index is already initialized."
             assert not dset_options, "Can't specify dataset options; index is already initialized."
         else:
