@@ -102,6 +102,9 @@ class H5BlockStore(object):
         self.dset_options = index_data['dset_options']
 
     def get_block(self, block_bounds, timeout=None, retry_delay=10.0):
+        assert len(block_bounds[0]) == len(block_bounds[1]) == len(self.axes), \
+            "block_bounds has mismatched length for this data: axes are '{}', but bounds were {}"\
+            .format(self.axes, block_bounds)
         return _SwmrH5Block(self, block_bounds, timeout, retry_delay)
 
     def _get_block_file_path(self, block_bounds):
