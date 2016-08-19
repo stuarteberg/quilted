@@ -38,7 +38,7 @@ class TestH5BlockStore(object):
 
         first_block_bounds = ( (0,0,0), (100,200,300) )
 
-        block = blockstore.get_block_file( first_block_bounds )
+        block = blockstore.get_block( first_block_bounds )
 
         with open (blockstore.index_path, 'r') as index_file:
             index_contents = json.load(index_file, object_pairs_hook=OrderedDict)
@@ -50,7 +50,7 @@ class TestH5BlockStore(object):
         
         # Shouldn't be able to access this block while block_f is open
         try:
-            blockstore.get_block_file( first_block_bounds, timeout=0.0 )
+            blockstore.get_block( first_block_bounds, timeout=0.0 )
         except H5BlockStore.TimeoutError:
             pass
         else:
@@ -59,13 +59,13 @@ class TestH5BlockStore(object):
         block.close()
         
         # Should be possible to access after close
-        block2 = blockstore.get_block_file( first_block_bounds, timeout=0.0 )
+        block2 = blockstore.get_block( first_block_bounds, timeout=0.0 )
         
         # Deleting block_f2 should auto-close
         del block2
 
         # Should be possible to access after close
-        block3 = blockstore.get_block_file( first_block_bounds, timeout=0.0 )
+        block3 = blockstore.get_block( first_block_bounds, timeout=0.0 )
         del block3
         
     @with_autocleaned_tempdir
@@ -73,7 +73,7 @@ class TestH5BlockStore(object):
         blockstore_root_dir = tmpdir
         blockstore = H5BlockStore(blockstore_root_dir, mode='a', axes='zyx', dtype=np.float32)
         first_block_bounds = ( (0,0,0), (100,200,300) )
-        block = blockstore.get_block_file( first_block_bounds )
+        block = blockstore.get_block( first_block_bounds )
         
         block[:] = 0.123
         block.close()
@@ -86,7 +86,7 @@ class TestH5BlockStore(object):
         # Re-open in read mode and read that way
         blockstore = H5BlockStore(blockstore_root_dir, mode='r')
         first_block_bounds = ( (0,0,0), (100,200,300) )
-        block = blockstore.get_block_file( first_block_bounds )
+        block = blockstore.get_block( first_block_bounds )
         assert (block[:] == 0.123).all()
 
 if __name__ == "__main__":

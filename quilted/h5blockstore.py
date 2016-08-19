@@ -100,7 +100,7 @@ class H5BlockStore(object):
         self.dtype = np.dtype(index_data['dtype'])        
         self.dset_options = index_data['dset_options']
 
-    def get_block_file(self, block_bounds, timeout=None, retry_delay=10.0):
+    def get_block(self, block_bounds, timeout=None, retry_delay=10.0):
         return _SwmrH5Block(self, block_bounds, timeout, retry_delay)
 
     def _get_block_file_path(self, block_bounds):
