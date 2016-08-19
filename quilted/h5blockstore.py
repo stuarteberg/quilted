@@ -106,6 +106,11 @@ class H5BlockStore(object):
             "block_bounds has mismatched length for this data: axes are '{}', but bounds were {}"\
             .format(self.axes, block_bounds)
         return _SwmrH5Block(self, block_bounds, timeout, retry_delay)
+    
+    def get_block_bounds_list(self):
+        with self.index_lock:
+            _index_data, block_entries = self._load_index()
+        return block_entries.keys()
 
     def _get_block_file_path(self, block_bounds):
         # TODO: Storing everything in one directory like this
