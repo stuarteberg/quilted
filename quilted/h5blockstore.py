@@ -124,6 +124,15 @@ class H5BlockStore(object):
             _index_data, block_entries = self._load_index()
         return block_entries.keys()
 
+    @classmethod
+    def bounds_match(cls, bounds1, bounds2):
+        """
+        Compare two block bounds tuples bounds1=(start, stop), bounds2=(start, stop),
+        they 'match' if they are equal in all places, but also 'None' means "don't care".
+        """
+        return  all(b1 == b2 or b1 is None or b2 is None for b1, b2 in zip( bounds1[0], bounds2[0] )) \
+            and all(b1 == b2 or b1 is None or b2 is None for b1, b2 in zip( bounds1[1], bounds2[1] ))
+
     def _get_block_file_path(self, block_bounds):
         # TODO: Storing everything in one directory like this
         #       won't perform well for 1000s of blocks.
@@ -154,6 +163,23 @@ class H5BlockStore(object):
         with open(self.index_path, 'w') as index_file:
             json.dump(index_data, index_file, indent=2, separators=(',', ': '))
 
+    def __contains__(self, block_bounds):
+        block_bounds = bounds_tuple(*block_bounds)
+        with self.index_lock:
+            _index_data, block_entries = self._load_index()
+
+            # Fast/common case first
+            if block_bounds in block_entries:
+                return True
+
+            for key in block_entries.keys():
+                if H5BlockStore.bounds_match(block_bounds, key):
+                    return True
+            return False
+
+    def __getitem__(self, block_bounds):
+        return self.get_block(block_bounds)
+
 class _SwmrH5Block(object):
     """
     Single-writer, multiple-reader h5py Dataset, using the H5BlockStore index as book-keeper.
@@ -163,9 +189,9 @@ class _SwmrH5Block(object):
           http://docs.h5py.org/en/latest/swmr.html
     """
     def __init__(self, parent_blockstore, block_bounds, timeout=None, retry_delay=10.0):
+        self.closed = True
         self.parent_blockstore = parent_blockstore
         block_bounds = bounds_tuple(*block_bounds)
-        self.block_bounds = block_bounds
         self.mode = mode = self.parent_blockstore.mode
         timeout_remaining = timeout
         
@@ -178,20 +204,36 @@ class _SwmrH5Block(object):
                 index_data, block_entries = self.parent_blockstore._load_index()
                 index_data_changed = False
 
+                # Fast/common case first
                 if block_bounds in block_entries:
+                    self.block_bounds = block_bounds
                     block_entry = block_entries[block_bounds]
                 else:
-                    if mode == 'r':
-                        raise H5BlockStore.MissingBlockError('Block does not exist: {}'.format( block_bounds ))
-
-                    block_entry = { "bounds": block_bounds,
-                                    "path": self.parent_blockstore._get_block_file_path(block_bounds),
-                                    "reader_count": 0,
-                                    "writer_count": 0 }
-                        
-                    block_entries[block_bounds] = block_entry
-                    index_data['block_entries'] = block_entries.values()
-                    index_data_changed = True
+                    matching_bounds = filter( lambda key: H5BlockStore.bounds_match( block_bounds, key ),
+                                              block_entries.keys() )
+                    if len(matching_bounds) > 1:
+                        raise RuntimeError("More than one block matches requested bounds: {}".format( block_bounds ))
+                    if len(matching_bounds) == 1:
+                        self.block_bounds = matching_bounds[0]
+                        block_entry = block_entries[self.block_bounds]
+                    else:
+                        if mode == 'r':
+                            raise H5BlockStore.MissingBlockError(
+                                "Block does not exist: {}".format( block_bounds ))
+                        if mode == 'a' and None in block_bounds[0] or None in block_bounds[1]:
+                            raise H5BlockStore.MissingBlockError(
+                                "Can't initialize new block from incomplete bounds specification: {}"
+                                .format( block_bounds ))
+    
+                        self.block_bounds = block_bounds
+                        block_entry = { "bounds": block_bounds,
+                                        "path": self.parent_blockstore._get_block_file_path(block_bounds),
+                                        "reader_count": 0,
+                                        "writer_count": 0 }
+                            
+                        block_entries[block_bounds] = block_entry
+                        index_data['block_entries'] = block_entries.values()
+                        index_data_changed = True
 
                 # Block path in the json is relative to the root_dir
                 # Convert to absolute
@@ -237,11 +279,14 @@ class _SwmrH5Block(object):
                 if timeout is not None:
                     timeout_remaining -= retry_delay
 
+            self.closed = False
+
     def __del__(self):
-        self.close()
+        if not self.closed:
+            self.close()
 
     def flush(self):
-        self.parent_blockstore.flush()
+        self._h5_file.flush()
 
     def close(self):
         """
@@ -260,6 +305,8 @@ class _SwmrH5Block(object):
 
             if self._h5_file:
                 self._h5_file.close()
+        self.closed = True
+
     ##
     ## All other methods/members are just pass-throughs to our underlying h5py.Dataset
     ##
@@ -284,8 +331,8 @@ def bounds_tuple(start, stop):
     Standardize the given start/stop into a tuple-of-ints,
     suitable for a dictionary key.
     """
-    start = tuple(map(int, start))
-    stop = tuple(map(int, stop))
+    start = tuple(int(x) if x is not None else None for x in start)
+    stop = tuple(int(x) if x is not None else None for x in stop)
     return (start, stop)
 
 

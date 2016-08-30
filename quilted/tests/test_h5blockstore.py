@@ -89,6 +89,30 @@ class TestH5BlockStore(object):
         block = blockstore.get_block( first_block_bounds )
         assert (block[:] == 0.123).all()
 
+    @with_autocleaned_tempdir
+    def test_incomplete_bounds_query(self, tmpdir):
+        blockstore_root_dir = tmpdir
+        blockstore = H5BlockStore(blockstore_root_dir, mode='a', axes='zyx', dtype=np.float32)
+        first_block_bounds = ( (0,0,0), (100,200,300) )
+        block = blockstore.get_block( first_block_bounds )
+        
+        block[:] = 0.123
+        block.close()
+        
+        # Try giving an incomplete block specification (using None)
+        incomplete_bounds = ( (0,0,0), (100,200,None) )
+        block = blockstore.get_block( incomplete_bounds )        
+        del block
+        
+        # But should not be possible to create a new block this way
+        try:
+            block = blockstore.get_block( ( (0,0,0), (100,5000,None) ) )
+        except H5BlockStore.MissingBlockError:
+            pass
+        else:
+            assert False, "Expected a MissingBlockError"
+        
+
 if __name__ == "__main__":
     import sys
     import nose
