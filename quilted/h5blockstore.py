@@ -52,10 +52,12 @@ class H5BlockStore(object):
     class TimeoutError(RuntimeError):
         """Raised if it takes too long to wait for access to a block that is being read/written by other threads/processes."""
     
-    def __init__(self, root_dir, mode='r', axes=None, dtype=None, dset_options=None):
+    def __init__(self, root_dir, mode='r', axes=None, dtype=None, dset_options=None, default_timeout=None, default_retry_delay=10.0):
         assert mode in ('r', 'a'), "Invalid mode"
         self.mode = mode
         self.root_dir = root_dir
+        self.default_timeout = default_timeout
+        self.default_retry_delay = default_retry_delay
         self.index_path = os.path.join(self.root_dir, 'index.json')
         self.index_lock = FileLock(self.index_path)
 
@@ -101,7 +103,17 @@ class H5BlockStore(object):
         self.dtype = np.dtype(index_data['dtype'])        
         self.dset_options = index_data['dset_options']
 
-    def get_block(self, block_bounds, timeout=None, retry_delay=10.0):
+    def get_block(self, block_bounds, **kwargs):
+        """
+        block_bounds: tuple-of-tuples, (start, stop)
+        kwargs: Allowed members are 'timeout' and 'retry_delay'
+        """
+        unknown_kwargs = set(kwargs.keys()) - set(['timeout', 'retry_delay'])
+        assert not unknown_kwargs, "Unknown keyword args: {}".format( list(unknown_kwargs) )
+            
+        timeout = kwargs.get('timeout', self.default_timeout)
+        retry_delay = kwargs.get('retry_delay', self.default_retry_delay)
+
         assert len(block_bounds[0]) == len(block_bounds[1]) == len(self.axes), \
             "block_bounds has mismatched length for this data: axes are '{}', but bounds were {}"\
             .format(self.axes, block_bounds)
