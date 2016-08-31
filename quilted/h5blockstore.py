@@ -67,9 +67,13 @@ class H5BlockStore(object):
             assert not dtype, "Can't set dtype; index is already initialized."
             assert not dset_options, "Can't specify dataset options; index is already initialized."
         elif not os.path.exists(self.index_path):
-            assert axes is not None, "Must specify axes (e.g. axes='zyx')"
-            assert dtype is not None, "Must specify dtype"
-            self._create_index(self.root_dir, axes, dtype, dset_options)
+            mkdir_p(root_dir)
+            with self.index_lock:
+                # Must check again after obtaining lock
+                if not os.path.exists(self.index_path):
+                    assert axes is not None, "Must specify axes (e.g. axes='zyx')"
+                    assert dtype is not None, "Must specify dtype"
+                    self._create_index(self.root_dir, axes, dtype, dset_options)
 
         self._init()
         
@@ -92,8 +96,7 @@ class H5BlockStore(object):
                                    ("dset_options", dset_options),            
                                    ("block_entries", [])] )
         
-        with self.index_lock:
-            self._write_index(index_data)
+        self._write_index(index_data)
 
     def _init(self):
         with self.index_lock:
