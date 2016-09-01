@@ -1,12 +1,15 @@
 import os
 import time
 import json
+import logging
 from collections import OrderedDict
 
 import numpy as np
 import h5py
 
 from .filelock import FileLock
+
+logger = logging.getLogger(__name__)
 
 # Here's an example of what the H5BlockStore index looks like...
 EXAMPLE_INDEX = """
@@ -52,7 +55,7 @@ class H5BlockStore(object):
     class TimeoutError(RuntimeError):
         """Raised if it takes too long to wait for access to a block that is being read/written by other threads/processes."""
     
-    def __init__(self, root_dir, mode='r', axes=None, dtype=None, dset_options=None, default_timeout=None, default_retry_delay=10.0):
+    def __init__(self, root_dir, mode='r', axes=None, dtype=None, dset_options=None, default_timeout=None, default_retry_delay=10.0, reset_access=False):
         assert mode in ('r', 'a'), "Invalid mode"
         self.mode = mode
         self.root_dir = root_dir
@@ -60,6 +63,12 @@ class H5BlockStore(object):
         self.default_retry_delay = default_retry_delay
         self.index_path = os.path.join(self.root_dir, 'index.json')
         self.index_lock = FileLock(self.index_path)
+
+        if reset_access:
+            try:
+                self.index_lock.release()
+            except:
+                pass
 
         if mode == 'r':
             if not os.path.exists(self.index_path):
@@ -81,7 +90,9 @@ class H5BlockStore(object):
             "Provided axes ({}) don't match previously stored axes ({})".format(axes, self.axes)
         assert not dtype or self.dtype == dtype, \
             "Provided dtype ({}) doesn't match previously stored dtype ({})".format(dtype, self.dtype)
-        
+
+        if reset_access:
+            self.reset_access()
         
     def _create_index(self, root_dir, axes, dtype, dset_options):
         mkdir_p(root_dir)
@@ -182,6 +193,50 @@ class H5BlockStore(object):
 
     def __getitem__(self, block_bounds):
         return self.get_block(block_bounds)
+
+    def reset_access(self):
+        """
+        This can be used to clean up after failed/killed jobs
+        which may have left the block data in an incomplete state.
+        Only call this if you're sure no other processes are using the blockstore!
+        
+        This function will:
+        - Unlock the index
+        - Reset all reader_counts to 0
+        - Delete any blocks that had a non-zero writer_count
+        """
+        try:
+            self.index_lock.release()
+        except:
+            pass
+        
+        with self.index_lock:
+            index_data, block_entries = self._load_index()
+            
+            need_index_rewrite = False
+            delete_list = []
+            for entry_bounds, block_entry in block_entries.items():
+                if block_entry['writer_count'] != 0:
+                    delete_list.append(entry_bounds)
+                    need_index_rewrite = True
+                elif block_entry['reader_count'] != 0:
+                    logger.warn("Resetting reader_count from {} to 0 for block: {}"
+                                .format(block_entry['reader_count'], entry_bounds))
+                    block_entry['reader_count'] = 0
+                    need_index_rewrite = True
+            
+            for entry_bounds in delete_list:
+                logger.warn("Deleting block {} (writer_count was {})"\
+                            .format(entry_bounds, block_entries[entry_bounds]['writer_count']))
+                try:
+                    os.unlink(self._get_block_file_path(entry_bounds))
+                except:
+                    pass
+                del block_entries[entry_bounds]
+
+            if need_index_rewrite:
+                index_data['block_entries'] = block_entries.values()
+                self._write_index(index_data)
 
 class _SwmrH5Block(object):
     """

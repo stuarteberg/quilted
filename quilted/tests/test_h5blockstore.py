@@ -111,9 +111,36 @@ class TestH5BlockStore(object):
             pass
         else:
             assert False, "Expected a MissingBlockError"
+
+    @with_autocleaned_tempdir
+    def test_reset_access(self, tmpdir):
+        blockstore_root_dir = tmpdir
+        blockstore = H5BlockStore(blockstore_root_dir, mode='a', axes='zyx', dtype=np.float32)
+        first_block_bounds = ( (0,0,0), (100,200,300) )
+        block = blockstore.get_block( first_block_bounds )
+        
+        block[:] = 0.123
+        
+        # Accessing same block will fail -- it's already locked
+        try:
+            block2 = blockstore.get_block( first_block_bounds, timeout=0.0 )
+        except H5BlockStore.TimeoutError:
+            pass
+
+        # Now, without deleting our reference to the block,
+        # reset the blockstore and access it again -- should work this time.
+        blockstore.reset_access()
+        block3 = blockstore.get_block( first_block_bounds, timeout=0.0 )
         
 
 if __name__ == "__main__":
+    import sys
+    import logging
+    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+
+    # Comment this out to see warnings from reset_access()
+    logging.getLogger('quilted.h5blockstore').setLevel(logging.ERROR)
+    
     import sys
     import nose
     sys.argv.append("--nocapture")    # Don't steal stdout.  Show it on the console as usual.
