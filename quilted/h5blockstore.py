@@ -226,10 +226,14 @@ class H5BlockStore(object):
                     need_index_rewrite = True
             
             for entry_bounds in delete_list:
+                block_entry = block_entries[entry_bounds]
                 logger.warn("Deleting block {} (writer_count was {})"\
-                            .format(entry_bounds, block_entries[entry_bounds]['writer_count']))
+                            .format(entry_bounds, ['writer_count']))
+
+                block_path = block_entry['path']
+                block_abspath = os.path.abspath(os.path.normpath(os.path.join(self.root_dir, block_path)))
                 try:
-                    os.unlink(self._get_block_file_path(entry_bounds))
+                    os.unlink(block_abspath)
                 except:
                     pass
                 del block_entries[entry_bounds]
