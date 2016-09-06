@@ -3,6 +3,7 @@ import time
 import json
 import logging
 from collections import OrderedDict
+from itertools import starmap
 
 import numpy as np
 import h5py
@@ -63,7 +64,7 @@ class H5BlockStore(object):
         self.default_retry_delay = default_retry_delay
         self.index_path = os.path.join(self.root_dir, 'index.json')
         self.index_lock = FileLock(self.index_path)
-
+        
         if reset_access:
             try:
                 self.index_lock.release()
@@ -82,6 +83,8 @@ class H5BlockStore(object):
                 if not os.path.exists(self.index_path):
                     assert axes is not None, "Must specify axes (e.g. axes='zyx')"
                     assert dtype is not None, "Must specify dtype"
+                if not dset_options:
+                    dset_options = {'chunks': True}
                     self._create_index(self.root_dir, axes, dtype, dset_options)
 
         self._init()
@@ -113,8 +116,8 @@ class H5BlockStore(object):
         with self.index_lock:
             index_data, _block_entries = self._load_index()
 
-        self.axes = index_data['axes']
-        self.dtype = np.dtype(index_data['dtype'])        
+        self.axes = str(index_data['axes'])
+        self.dtype = np.dtype(index_data['dtype'])
         self.dset_options = index_data['dset_options']
 
     def get_block(self, block_bounds, **kwargs):
@@ -137,6 +140,47 @@ class H5BlockStore(object):
         with self.index_lock:
             _index_data, block_entries = self._load_index()
         return block_entries.keys()
+
+    def export_to_single_dset(self, output_filepath, dset_name, crop_function=lambda block_bounds: block_bounds):
+        """
+        Export the entire blockstore into a single HDF5 dataset.
+        Because blocks in the blockstore might overlap, you may provide a
+        crop_function to specify which subvolume of each block to write.
+        """
+        logger.info("Exporting to {}/{} ...".format( output_filepath, dset_name ))
+        with h5py.File(output_filepath, 'a') as output_file:
+            try:
+                del output_file[dset_name]
+            except KeyError:
+                pass
+
+            # Global coordinates
+            all_block_bounds = self.get_block_bounds_list()
+            all_cropped_block_bounds = map( crop_function, all_block_bounds)
+
+            max_coords = np.array(all_cropped_block_bounds)[:,1].max(axis=0)            
+            output_dset = output_file.create_dataset(dset_name, shape=max_coords, dtype=self.dtype, **self.dset_options )
+            output_dset.attrs['axisorder'] = self.axes
+
+            try:
+                # Provide vigra axistags info if possible.
+                import vigra
+                output_dset.attrs['axistags'] = vigra.defaultAxistags(self.axes).toJSON()
+            except ImportError:
+                pass
+            
+            for i, (block_bounds, cropped_block_bounds) in enumerate( zip(all_block_bounds, all_cropped_block_bounds) ):
+                # Block-relative coordinates 
+                subvol_bounds = np.array(cropped_block_bounds) - block_bounds[0]
+                
+                with self.get_block(block_bounds) as block_dset:
+                    logger.info("Reading from {}/{}: {}".format( i, len(all_block_bounds), block_bounds ))
+                    subvol_data = block_dset[bb_to_slicing(*subvol_bounds)]
+
+                    logger.info("Writing to   {}/{}: {}".format( i, len(all_block_bounds), bounds_tuple(*cropped_block_bounds) ))
+                    output_dset[bb_to_slicing(*cropped_block_bounds)] = subvol_data
+        
+        logger.info("DONE Exporting to {}/{}".format( output_filepath, dset_name ))
 
     @classmethod
     def bounds_match(cls, bounds1, bounds2):
@@ -347,6 +391,12 @@ class _SwmrH5Block(object):
         if not self.closed:
             self.close()
 
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, *args):
+        self.close()
+
     def flush(self):
         self._h5_file.flush()
 
@@ -386,7 +436,10 @@ class _SwmrH5Block(object):
             # All other attributes come from our internal h5 dataset
             assert self._h5_dset is not None
             return getattr(self._h5_dset, name)
-    
+
+##
+## Utility functions
+##    
 
 def bounds_tuple(start, stop):
     """
@@ -397,6 +450,16 @@ def bounds_tuple(start, stop):
     stop = tuple(int(x) if x is not None else None for x in stop)
     return (start, stop)
 
+def bb_to_slicing(start, stop):
+    """
+    For the given bounding box (start, stop),
+    return the corresponding slicing tuple.
+
+    Example:
+    
+        >>> assert bb_to_slicing([1,2,3], [4,5,6]) == np.s_[1:4, 2:5, 3:6]
+    """
+    return tuple( starmap( slice, zip(start, stop) ) )
 
 def mkdir_p(path):
     """

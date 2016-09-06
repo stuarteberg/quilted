@@ -132,6 +132,38 @@ class TestH5BlockStore(object):
         blockstore.reset_access()
         block3 = blockstore.get_block( first_block_bounds, timeout=0.0 )
         
+    @with_autocleaned_tempdir
+    def test_export_to_hdf5(self, tmpdir):
+        blockstore_root_dir = tmpdir
+        blockstore = H5BlockStore(blockstore_root_dir, mode='a', axes='zyx', dtype=np.float32)
+
+        first_block_bounds = ( (0,0,0), (110,210,310) )
+        with blockstore.get_block( first_block_bounds ) as first_block:        
+            first_block[:] = 1
+
+        second_block_bounds = ( (90,190,290), (210,310,410) )
+        with blockstore.get_block( second_block_bounds ) as second_block:        
+            second_block[:] = 2
+        
+        def remove_halo(block_bounds):
+            block_bounds = np.array(block_bounds)
+            block_bounds[0] += 10
+            block_bounds[1] -= 10
+            return block_bounds
+        
+        export_filepath = tmpdir + '/exported.h5'
+        blockstore.export_to_single_dset(export_filepath, 'data', remove_halo)
+
+        with h5py.File(export_filepath, 'r') as exported_file:
+            assert exported_file['data'].dtype == np.float32
+            assert exported_file['data'].shape == (200,300,400)
+            
+            # Cropped-out pixels from the halo should be zero
+            assert (exported_file['data'][0:10, 0:10, 0:10] == 0).all()
+
+            # Did the overlapping region get properly handled in each block?            
+            assert (exported_file['data'][10:100, 10:200, 10:300] == 1).all()
+            assert (exported_file['data'][100:200, 200:300, 300:400] == 2).all()
 
 if __name__ == "__main__":
     import sys
