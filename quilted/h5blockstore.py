@@ -83,8 +83,8 @@ class H5BlockStore(object):
                 if not os.path.exists(self.index_path):
                     assert axes is not None, "Must specify axes (e.g. axes='zyx')"
                     assert dtype is not None, "Must specify dtype"
-                if not dset_options:
-                    dset_options = {'chunks': True}
+                    if not dset_options:
+                        dset_options = {'chunks': True}
                     self._create_index(self.root_dir, axes, dtype, dset_options)
 
         self._init()
