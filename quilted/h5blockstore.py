@@ -158,8 +158,8 @@ class H5BlockStore(object):
             all_block_bounds = self.get_block_bounds_list()
             all_cropped_block_bounds = map( crop_function, all_block_bounds)
 
-            max_coords = np.array(all_cropped_block_bounds)[:,1].max(axis=0)            
-            output_dset = output_file.create_dataset(dset_name, shape=max_coords, dtype=self.dtype, **self.dset_options )
+            max_bounds = np.array(all_cropped_block_bounds)[:,1].max(axis=0)
+            output_dset = output_file.create_dataset(dset_name, shape=max_bounds, dtype=self.dtype, **self.dset_options )
             output_dset.attrs['axisorder'] = self.axes
 
             try:
@@ -181,6 +181,70 @@ class H5BlockStore(object):
                     output_dset[bb_to_slicing(*cropped_block_bounds)] = subvol_data
         
         logger.info("DONE Exporting to {}/{}".format( output_filepath, dset_name ))
+
+
+    def export_to_array(self, requested_bounds, crop_function=lambda bb: bb, out=None):
+        """
+        Export a subset of the blockstore to a numpy array.
+        
+        requested_bounds: (start, stop)
+        crop_function: A function of this form, specifying how to crop each block's
+                       data before it is copied into the final result.
+                       def f( (start, stop) ):
+                           ...
+                           return (new_start, new_stop)
+        out: Optional pre-allocated array for the results.
+        """
+        requested_bounds = np.asarray( requested_bounds )
+        out_shape = tuple(requested_bounds[1] - requested_bounds[0])
+        if out is None:
+            out = np.zeros( shape=out_shape, dtype=self.dtype )
+        
+        assert out.shape == out_shape, \
+            "Output shape ({}) doesn't match requested bounds: {}"\
+            .format( out.shape, requested_bounds.tolist() )
+        assert out.dtype == self.dtype, \
+            "Output array has the wrong dtype: {}".format( out.dtype )
+
+        # Global coordinates
+        all_block_bounds = self.get_block_bounds_list()
+        all_cropped_block_bounds = np.array( map( crop_function, all_block_bounds) )
+        intersections = map( lambda cropped_bb: self.compute_bounds_intersecton(requested_bounds, cropped_bb),
+                             all_cropped_block_bounds )
+        
+        for block_bounds, intersection_global in zip( all_block_bounds, intersections ):
+            if intersection_global is None:
+                continue
+            
+            # block-relative coordinates
+            intersection_block = intersection_global - block_bounds[0]
+            
+            with self.get_block(block_bounds) as block_dset:
+                data = block_dset[bb_to_slicing(*intersection_block)]
+            
+            # out-relative coordinates
+            intersection_out = intersection_global - requested_bounds[0]
+            
+            # Write into output
+            out[bb_to_slicing(*intersection_out)] = data
+
+        return out
+
+
+    @classmethod
+    def compute_bounds_intersecton( cls, a, b ):
+        """
+        Given bounding boxes a and b, return the intersecting bounding box,
+        or return None if they don't intersect at all.
+        
+        a,b: bounding boxes, e.g. [[0,0,0], [100,200,300]]
+        """
+        start = np.maximum( a[0], b[0] )
+        stop = np.minimum( a[1], b[1] )
+    
+        if ((stop - start) <= 0).any():
+            return None
+        return np.array((start, stop))
 
     @classmethod
     def bounds_match(cls, bounds1, bounds2):

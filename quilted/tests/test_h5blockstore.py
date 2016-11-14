@@ -165,6 +165,35 @@ class TestH5BlockStore(object):
             assert (exported_file['data'][10:100, 10:200, 10:300] == 1).all()
             assert (exported_file['data'][100:200, 200:300, 300:400] == 2).all()
 
+    @with_autocleaned_tempdir
+    def test_export_to_array(self, tmpdir):
+        blockstore_root_dir = tmpdir
+        blockstore = H5BlockStore(blockstore_root_dir, mode='a', axes='zyx', dtype=np.float32)
+
+        first_block_bounds = ( (0,0,0), (110,210,310) )
+        with blockstore.get_block( first_block_bounds ) as first_block:
+            first_block[:] = 1
+
+        second_block_bounds = ( (90,190,290), (210,310,410) )
+        with blockstore.get_block( second_block_bounds ) as second_block:
+            second_block[:] = 2
+        
+        def remove_halo(block_bounds):
+            block_bounds = np.array(block_bounds)
+            block_bounds[0] += 10
+            block_bounds[1] -= 10
+            return block_bounds
+        
+        subvol = blockstore.export_to_array([(50, 150, 250), (150, 250, 350)], remove_halo)
+
+        assert subvol.shape == (100,100,100)
+        assert subvol.dtype == np.float32
+        assert (subvol[0:50, 0:50, 0:50] == 1).all()
+        assert (subvol[50:100, 50:100, 50:100] == 2).all()
+
+        # Pixels not touched by any of the cropped blocks should be zero
+        assert (subvol[0:50, 50:100, 0:50] == 0).all()
+
 if __name__ == "__main__":
     import sys
     import logging
