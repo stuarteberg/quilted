@@ -70,6 +70,8 @@ class H5BlockStore(object):
                 self.index_lock.release()
             except:
                 pass
+            else:
+                logger.warn("Resetting access to H5BlockStore at: {}".format( root_dir ))
 
         if mode == 'r':
             if not os.path.exists(self.index_path):
