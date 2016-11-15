@@ -224,14 +224,17 @@ class H5BlockStore(object):
             # block-relative coordinates
             intersection_block = intersection_global - block_bounds[0]
             
-            with self.get_block(block_bounds) as block_dset:
-                data = block_dset[bb_to_slicing(*intersection_block)]
-            
-            # out-relative coordinates
-            intersection_out = intersection_global - requested_bounds[0]
-            
-            # Write into output
-            out[bb_to_slicing(*intersection_out)] = data
+            try:
+                with self.get_block(block_bounds) as block_dset:
+                    data = block_dset[bb_to_slicing(*intersection_block)]
+            except IOError as ex:
+                logger.warn(str(ex))
+            else:
+                # out-relative coordinates
+                intersection_out = intersection_global - requested_bounds[0]
+                
+                # Write into output
+                out[bb_to_slicing(*intersection_out)] = data
 
         return out
 
