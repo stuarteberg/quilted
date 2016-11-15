@@ -200,7 +200,9 @@ class H5BlockStore(object):
         requested_bounds = np.asarray( requested_bounds )
         out_shape = tuple(requested_bounds[1] - requested_bounds[0])
         if out is None:
-            out = np.zeros( shape=out_shape, dtype=self.dtype )
+            out = np.zeros( out_shape, dtype=self.dtype )
+        else:
+            out[:] = 0
         
         assert out.shape == out_shape, \
             "Output shape ({}) doesn't match requested bounds: {}"\
@@ -213,7 +215,8 @@ class H5BlockStore(object):
         all_cropped_block_bounds = np.array( map( crop_function, all_block_bounds) )
         intersections = map( lambda cropped_bb: self.compute_bounds_intersecton(requested_bounds, cropped_bb),
                              all_cropped_block_bounds )
-        
+
+
         for block_bounds, intersection_global in zip( all_block_bounds, intersections ):
             if intersection_global is None:
                 continue
