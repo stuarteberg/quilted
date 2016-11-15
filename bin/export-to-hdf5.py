@@ -36,4 +36,9 @@ def main():
     blockstore.export_to_single_dset(filepath, dset_name, remove_halo)
 
 if __name__ == "__main__":
+    # DEBUG
+    #sys.argv += ["--crop-halo=20"]
+    #sys.argv += ["/groups/flyem/data/scratchspace/classifiers/fib25-multicut/segmentation-cache/prediter-0"]
+    #sys.argv += ["/tmp/output.h5/predictions"]
+    
     main()
