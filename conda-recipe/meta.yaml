@@ -23,7 +23,7 @@ requirements:
   run:
     - python {{PY_VER}}*
     - numpy  >=1.9
-    - hdf5   1.8.16
+    - hdf5
     - h5py   >=2.6
 
 test:
