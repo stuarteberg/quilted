@@ -10,7 +10,7 @@ setup(
     name='quilted',
     version='0.1',
     long_description=readme_contents,
-    packages=['quilted'],
+    packages=['quilted', 'quilted.tests'],
     include_package_data=True,
     zip_safe=False,
     #install_requires=['numpy, h5py']
