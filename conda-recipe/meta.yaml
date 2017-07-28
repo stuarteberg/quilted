@@ -17,10 +17,11 @@ build:
 
 requirements:
   build:
-    - python 2.7*
+    - python >=2.7
+    - python {{PY_VER}}*
 
   run:
-    - python 2.7*
+    - python {{PY_VER}}*
     - numpy  >=1.9
     - hdf5   1.8.16
     - h5py   >=2.6

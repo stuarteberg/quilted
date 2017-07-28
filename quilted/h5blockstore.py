@@ -141,7 +141,7 @@ class H5BlockStore(object):
     def get_block_bounds_list(self):
         with self.index_lock:
             _index_data, block_entries = self._load_index()
-        return block_entries.keys()
+        return list(block_entries.keys())
 
     def export_to_single_dset(self, output_filepath, dset_name, crop_function=lambda block_bounds: block_bounds):
         """
@@ -158,7 +158,7 @@ class H5BlockStore(object):
 
             # Global coordinates
             all_block_bounds = self.get_block_bounds_list()
-            all_cropped_block_bounds = map( crop_function, all_block_bounds)
+            all_cropped_block_bounds = list(map( crop_function, all_block_bounds))
 
             max_bounds = np.array(all_cropped_block_bounds)[:,1].max(axis=0)
             output_dset = output_file.create_dataset(dset_name, shape=max_bounds, dtype=self.dtype, **self.dset_options )
@@ -212,9 +212,8 @@ class H5BlockStore(object):
 
         # Global coordinates
         all_block_bounds = self.get_block_bounds_list()
-        all_cropped_block_bounds = np.array( map( crop_function, all_block_bounds) )
-        intersections = map( lambda cropped_bb: self.compute_bounds_intersecton(requested_bounds, cropped_bb),
-                             all_cropped_block_bounds )
+        all_cropped_block_bounds = np.array( list(map( crop_function, all_block_bounds)) )
+        intersections = [self.compute_bounds_intersecton(requested_bounds, cropped_bb) for cropped_bb in all_cropped_block_bounds]
 
 
         for block_bounds, intersection_global in zip( all_block_bounds, intersections ):
@@ -268,8 +267,8 @@ class H5BlockStore(object):
         #       won't perform well for 1000s of blocks.
         #       This function could be made more sophisticated.
         return "blocks/block_{}__{}.h5".format(
-            '_'.join(map(lambda (axis, bb): axis + str(bb), zip(self.axes, block_bounds[0]))),
-            '_'.join(map(lambda (axis, bb): axis + str(bb), zip(self.axes, block_bounds[1]))))
+            '_'.join([axis_bb[0] + str(axis_bb[1]) for axis_bb in zip(self.axes, block_bounds[0])]),
+            '_'.join([axis_bb1[0] + str(axis_bb1[1]) for axis_bb1 in zip(self.axes, block_bounds[1])]))
 
     def _load_index(self):
         assert self.index_lock.locked(), \
@@ -302,7 +301,7 @@ class H5BlockStore(object):
             if block_bounds in block_entries:
                 return True
 
-            for key in block_entries.keys():
+            for key in list(block_entries.keys()):
                 if H5BlockStore.bounds_match(block_bounds, key):
                     return True
             return False
@@ -355,7 +354,7 @@ class H5BlockStore(object):
                 del block_entries[entry_bounds]
 
             if need_index_rewrite:
-                index_data['block_entries'] = block_entries.values()
+                index_data['block_entries'] = list(block_entries.values())
                 self._write_index(index_data)
 
 class _SwmrH5Block(object):
@@ -387,8 +386,7 @@ class _SwmrH5Block(object):
                     self.block_bounds = block_bounds
                     block_entry = block_entries[block_bounds]
                 else:
-                    matching_bounds = filter( lambda key: H5BlockStore.bounds_match( block_bounds, key ),
-                                              block_entries.keys() )
+                    matching_bounds = [key for key in list(block_entries.keys()) if H5BlockStore.bounds_match( block_bounds, key )]
                     if len(matching_bounds) > 1:
                         raise RuntimeError("More than one block matches requested bounds: {}".format( block_bounds ))
                     if len(matching_bounds) == 1:
@@ -410,7 +408,7 @@ class _SwmrH5Block(object):
                                         "writer_count": 0 }
                             
                         block_entries[block_bounds] = block_entry
-                        index_data['block_entries'] = block_entries.values()
+                        index_data['block_entries'] = list(block_entries.values())
                         index_data_changed = True
 
                 # Block path in the json is relative to the root_dir
